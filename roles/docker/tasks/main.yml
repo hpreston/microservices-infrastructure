@@ -1,7 +1,7 @@
 ---
 # Workaround for https://github.com/CiscoCloud/microservices-infrastructure/issues/161
 - name: install latest device-mapper-libs
-  sudo: yes
+  become: yes
   yum:
     name: device-mapper-libs
     state: latest
@@ -9,9 +9,8 @@
     - docker
     - bootstrap
 
-
 - name: install docker packages
-  sudo: yes
+  become: yes
   yum:
     name: "{{ item }}"
     state: present
@@ -23,12 +22,15 @@
     - bootstrap
 
 - name: check if docker storage already set up with devicemapper
-  sudo: yes
-  shell: "test -f /etc/sysconfig/docker-storage-setup && . /etc/sysconfig/docker-storage-setup && echo ${STORAGE_DRIVER:-NOT_SET}"
+  become: yes
+  shell: "[ -f /etc/sysconfig/docker-storage-setup ] && . /etc/sysconfig/docker-storage-setup && echo ${STORAGE_DRIVER:-NOT_SET}"
   register: docker_already_set_up_with_devicemapper
+  tags:
+    - docker
+    - bootstrap
 
 - name: setup docker storage
-  sudo: yes
+  become: yes
   lineinfile:
     dest: /etc/sysconfig/docker-storage-setup
     regexp: "^{{ item.var }}=.*"
@@ -55,15 +57,16 @@
   when: docker_lvm_backed_devicemapper
 
 - name: create rsyslog.d
-  sudo: yes
+  become: yes
   file:
     dest: /etc/rsyslog.d
     state: directory
   tags:
     - docker
+    - bootstrap
 
 - name: create docker entry for syslogd
-  sudo: yes
+  become: yes
   copy:
     dest: /etc/rsyslog.d/10-docker.conf
     content: |
@@ -74,10 +77,11 @@
     - restart rsyslog
   tags:
     - docker
+    - bootstrap
 
 
 - name: configure docker consul dns
-  sudo: yes
+  become: yes
   lineinfile:
     dest: /etc/sysconfig/docker
     regexp: ^OPTIONS=
@@ -90,15 +94,16 @@
     - docker
 
 - name: ensure docker config dir exists
-  sudo: yes
+  become: yes
   file:
     path: /root/.docker
     state: directory
   tags:
     - docker
+    - bootstrap
 
 - name: setup private docker registry credentials
-  sudo: yes
+  become: yes
   when: do_private_docker_registry
   template:
     src: config.json.j2
@@ -108,7 +113,7 @@
   register: docker_registry_credentials
 
 - name: add docker registry credentials to /etc/
-  sudo: yes
+  become: yes
   when: do_private_docker_registry and docker_registry_credentials.changed
   command: tar cvzf /etc/docker.tar.gz .docker
   args:
@@ -117,7 +122,8 @@
     - docker
 
 - name: enable docker
-  sudo: yes
+  become: yes
+  failed_when: no
   service:
     name: docker
     enabled: yes
@@ -125,5 +131,16 @@
   tags:
     - docker
     - bootstrap # needed to install Docker images during bootstrap
+
+- name: debug
+  register: dkr2
+  become: yes
+  command: journalctl -u docker --no-pager -l
+  tags:
+    - bootstrap
+
+- debug: msg='{{ dkr2.stdout }}'
+  tags:
+    - bootstrap
 
 - include: collectd.yml

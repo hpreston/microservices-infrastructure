@@ -19,7 +19,7 @@
     - logstash
 
 - name: ensure logstash docker image is present
-  sudo: yes
+  become: yes
   command: /usr/bin/docker pull {{ logstash_image }}:{{ logstash_image_tag }}
   tags:
     - logstash
